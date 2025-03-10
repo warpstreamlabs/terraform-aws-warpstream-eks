@@ -103,6 +103,153 @@ module "endpoints" {
 #   secret_string = var.warpstream_agent_key
 # }
 
-# TODO: deploy auto mode eks cluster
+# Creating a EKS cluster for this example, you can bring your own cluster
+# if you already have one and don't need to use the one created here.
+module "eks" {
+  source  = "terraform-aws-modules/eks/aws"
+  version = "20.34.0"
 
-# TODO: use module to deploy helm + buckets
+  cluster_name                   = local.name
+  cluster_version                = "1.31"
+  cluster_endpoint_public_access = true
+
+  enable_cluster_creator_admin_permissions = true
+
+  cluster_compute_config = {
+    enabled    = true
+    node_pools = ["general-purpose", "system"]
+  }
+
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+}
+
+provider "helm" {
+  kubernetes {
+    host                   = module.eks.cluster_endpoint
+    cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+    exec {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      args        = ["eks", "get-token", "--cluster-name", local.name]
+      command     = "aws"
+    }
+  }
+
+}
+
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "ecs_task" {
+  statement {
+    effect = "Allow"
+
+    principals {
+      type        = "Federated"
+      identifiers = [module.eks.oidc_provider_arn]
+    }
+
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub"
+
+      values = ["system:serviceaccount:default:${trimsuffix(substr("ex-warpstream-eks-warpstream-agent", 0, 63), "-")}"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:aud"
+
+      values = ["sts.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ecs_task" {
+  name               = "ex-warpstream-eks-ecs-task"
+  assume_role_policy = data.aws_iam_policy_document.ecs_task.json
+}
+
+data "aws_iam_policy_document" "ec2_ecs_task_s3_bucket" {
+  statement {
+    effect = "Allow"
+
+    actions = [
+      "s3:ListBucket",
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+    ]
+
+    resources = concat([
+      for bucketName in [aws_s3_bucket.bucket.bucket] :
+      "arn:aws:s3:::${bucketName}"
+      ], [
+      for bucketName in [aws_s3_bucket.bucket.bucket] :
+      "arn:aws:s3:::${bucketName}/*"
+      ]
+    )
+  }
+}
+
+resource "aws_iam_role_policy" "ec2_ecs_task_s3_bucket" {
+  name = "ex-warpstream-eks-s3"
+  role = aws_iam_role.ecs_task.id
+
+  policy = data.aws_iam_policy_document.ec2_ecs_task_s3_bucket.json
+}
+
+resource "helm_release" "warpstream-agent" {
+  name       = "ex-warpstream-eks"
+  repository = "https://warpstreamlabs.github.io/charts"
+  chart      = "warpstream-agent"
+
+  namespace = "default"
+
+  set {
+    name  = "config.bucketURL"
+    value = "s3://${aws_s3_bucket.bucket.bucket}?region=${data.aws_region.current.name}"
+  }
+  set {
+    name  = "config.agentKey"
+    value = "aks_5c13beb1fe7b49a6aa52c7f1ff17858ce604f516a3a5a392cf68ce9bd16d9744"
+  }
+  set {
+    name  = "config.region"
+    value = "us-east-1"
+  }
+
+  set {
+    name  = "config.virtualClusterID"
+    value = "vci_ecfbfdfc_69b7_43fb_8906_5ead15fb967a"
+  }
+
+  set {
+    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+    value = aws_iam_role.ecs_task.arn
+  }
+
+  values = [<<EOT
+topologySpreadConstraints:
+  # Don't put pods in the same zone, with min zones matching number of subnets
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    minDomains: ${length(module.vpc.private_subnets)}
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: warpstream-agent
+        app.kubernetes.io/instance: ${trimsuffix(substr("ex-warpstream-eks", 0, 63), "-")}
+  # Don't put pods on the same node
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: warpstream-agent
+        app.kubernetes.io/instance: ${trimsuffix(substr("ex-warpstream-eks", 0, 63), "-")}
+EOT
+  ]
+}
