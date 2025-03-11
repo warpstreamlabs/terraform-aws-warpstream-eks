@@ -6,6 +6,8 @@ resource "aws_s3_bucket" "bucket" {
 resource "aws_s3_bucket_public_access_block" "bucket" {
   bucket = aws_s3_bucket.bucket.id
 
+  // Blocking all public access to the bucket per best practice.
+  // There is no reason the warpstream bucket needs to be public.
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true

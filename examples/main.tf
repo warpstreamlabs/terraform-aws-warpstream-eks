@@ -55,7 +55,7 @@ module "vpc" {
 }
 
 # It is highly recommended to create a S3 Gateway endpoint in your VPC.
-# This is prevent S3 network traffic from egressing over your NAT Gateway and increasing costs.
+# This is to prevent S3 network traffic from egressing over your NAT Gateway and increasing costs.
 module "endpoints" {
   source  = "terraform-aws-modules/vpc/aws//modules/vpc-endpoints"
   version = "5.18.1"
