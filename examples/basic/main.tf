@@ -1,19 +1,19 @@
 locals {
-  name = "ex-warpstream-eks"
+  name = "ex-warpstream-eks-${basename(path.cwd)}"
 
   region = "us-east-1"
 }
 
-# variable "warpstream_virtual_cluster_id" {
-#   description = "The warpstream virtual cluster id"
-#   type        = string
-# }
+variable "warpstream_virtual_cluster_id" {
+  description = "The warpstream virtual cluster id"
+  type        = string
+}
 
-# variable "warpstream_agent_key" {
-#   description = "The agent key for the warpstream cluster"
-#   type        = string
-#   sensitive   = true
-# }
+variable "warpstream_agent_key" {
+  description = "The agent key for the warpstream cluster"
+  type        = string
+  sensitive   = true
+}
 
 provider "aws" {
   region = local.region
@@ -103,7 +103,7 @@ module "endpoints" {
 #   secret_string = var.warpstream_agent_key
 # }
 
-# Creating a EKS cluster for this example, you can bring your own cluster
+# Creating an EKS cluster for this example, you can bring your own cluster
 # if you already have one and don't need to use the one created here.
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
@@ -137,119 +137,22 @@ provider "helm" {
 
 }
 
-data "aws_region" "current" {}
-data "aws_caller_identity" "current" {}
+module "warpstream" {
+  source = "../.."
 
-data "aws_iam_policy_document" "ecs_task" {
-  statement {
-    effect = "Allow"
+  resource_prefix      = local.name
+  control_plane_region = local.region
+  kubernetes_namespace = "default"
 
-    principals {
-      type        = "Federated"
-      identifiers = [module.eks.oidc_provider_arn]
-    }
+  # Zone count must match the number of zones in the EKS cluster so the
+  # WarpStream pods get evenly distributed across all zones
+  zone_count = length(module.vpc.private_subnets)
 
-    actions = ["sts:AssumeRoleWithWebIdentity"]
+  eks_oidc_provider_arn = module.eks.oidc_provider_arn
+  eks_oidc_issuer_url   = module.eks.cluster_oidc_issuer_url
 
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:sub"
+  warpstream_virtual_cluster_id = var.warpstream_virtual_cluster_id
+  warpstream_agent_key          = var.warpstream_agent_key
 
-      values = ["system:serviceaccount:default:${trimsuffix(substr("ex-warpstream-eks-warpstream-agent", 0, 63), "-")}"]
-    }
-
-    condition {
-      test     = "StringEquals"
-      variable = "${replace(module.eks.cluster_oidc_issuer_url, "https://", "")}:aud"
-
-      values = ["sts.amazonaws.com"]
-    }
-  }
-}
-
-resource "aws_iam_role" "ecs_task" {
-  name               = "ex-warpstream-eks-ecs-task"
-  assume_role_policy = data.aws_iam_policy_document.ecs_task.json
-}
-
-data "aws_iam_policy_document" "ec2_ecs_task_s3_bucket" {
-  statement {
-    effect = "Allow"
-
-    actions = [
-      "s3:ListBucket",
-      "s3:GetObject",
-      "s3:PutObject",
-      "s3:DeleteObject",
-    ]
-
-    resources = concat([
-      for bucketName in [aws_s3_bucket.bucket.bucket] :
-      "arn:aws:s3:::${bucketName}"
-      ], [
-      for bucketName in [aws_s3_bucket.bucket.bucket] :
-      "arn:aws:s3:::${bucketName}/*"
-      ]
-    )
-  }
-}
-
-resource "aws_iam_role_policy" "ec2_ecs_task_s3_bucket" {
-  name = "ex-warpstream-eks-s3"
-  role = aws_iam_role.ecs_task.id
-
-  policy = data.aws_iam_policy_document.ec2_ecs_task_s3_bucket.json
-}
-
-resource "helm_release" "warpstream-agent" {
-  name       = "ex-warpstream-eks"
-  repository = "https://warpstreamlabs.github.io/charts"
-  chart      = "warpstream-agent"
-
-  namespace = "default"
-
-  set {
-    name  = "config.bucketURL"
-    value = "s3://${aws_s3_bucket.bucket.bucket}?region=${data.aws_region.current.name}"
-  }
-  set {
-    name  = "config.agentKey"
-    value = "aks_5c13beb1fe7b49a6aa52c7f1ff17858ce604f516a3a5a392cf68ce9bd16d9744"
-  }
-  set {
-    name  = "config.region"
-    value = "us-east-1"
-  }
-
-  set {
-    name  = "config.virtualClusterID"
-    value = "vci_ecfbfdfc_69b7_43fb_8906_5ead15fb967a"
-  }
-
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.ecs_task.arn
-  }
-
-  values = [<<EOT
-topologySpreadConstraints:
-  # Don't put pods in the same zone, with min zones matching number of subnets
-  - maxSkew: 1
-    topologyKey: topology.kubernetes.io/zone
-    whenUnsatisfiable: DoNotSchedule
-    minDomains: ${length(module.vpc.private_subnets)}
-    labelSelector:
-      matchLabels:
-        app.kubernetes.io/name: warpstream-agent
-        app.kubernetes.io/instance: ${trimsuffix(substr("ex-warpstream-eks", 0, 63), "-")}
-  # Don't put pods on the same node
-  - maxSkew: 1
-    topologyKey: kubernetes.io/hostname
-    whenUnsatisfiable: DoNotSchedule
-    labelSelector:
-      matchLabels:
-        app.kubernetes.io/name: warpstream-agent
-        app.kubernetes.io/instance: ${trimsuffix(substr("ex-warpstream-eks", 0, 63), "-")}
-EOT
-  ]
+  bucket_names = [aws_s3_bucket.bucket.bucket]
 }
