@@ -93,16 +93,6 @@ module "endpoints" {
   }
 }
 
-# Store the WarpStream Agent Key in AWS Secret Manager
-# resource "aws_secretsmanager_secret" "warpstream_agent_key" {
-#   name_prefix = "${local.name}-agent-key"
-# }
-
-# resource "aws_secretsmanager_secret_version" "warpstream_agent_key" {
-#   secret_id     = aws_secretsmanager_secret.warpstream_agent_key.id
-#   secret_string = var.warpstream_agent_key
-# }
-
 # Creating an EKS cluster for this example, you can bring your own cluster
 # if you already have one and don't need to use the one created here.
 module "eks" {

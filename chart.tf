@@ -20,14 +20,6 @@ resource "helm_release" "warpstream-agent" {
   }
 
   dynamic "set" {
-    for_each = length(var.bucket_names) > 1 ? [true] : []
-    content {
-      name  = "WARPSTREAM_BATCH_TIMEOUT"
-      value = "50ms"
-    }
-  }
-
-  dynamic "set" {
     for_each = length(var.bucket_names) > 1 ? ["s3://${var.compaction_bucket_name}?region=${data.aws_region.current.name}"] : []
     content {
       name  = "config.compactionBucketURL"
@@ -105,5 +97,5 @@ affinity:
           app.kubernetes.io/instance: ${trimsuffix(substr(var.resource_prefix, 0, 63), "-")}
       topologyKey: kubernetes.io/hostname
 EOT
-  ])
+  ], var.additional_helm_values)
 }

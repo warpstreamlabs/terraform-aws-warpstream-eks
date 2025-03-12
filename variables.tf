@@ -75,6 +75,12 @@ variable "additional_helm_sets" {
   default = []
 }
 
+variable "additional_helm_values" {
+  description = "Additional value yamls to apply to the helm deploy"
+  type        = list(string)
+  default     = []
+}
+
 variable "helm_chart_version" {
   description = "The version of the helm chart to deply"
   type        = string

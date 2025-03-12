@@ -93,16 +93,6 @@ module "endpoints" {
   }
 }
 
-# Store the WarpStream Agent Key in AWS Secret Manager
-# resource "aws_secretsmanager_secret" "warpstream_agent_key" {
-#   name_prefix = "${local.name}-agent-key"
-# }
-
-# resource "aws_secretsmanager_secret_version" "warpstream_agent_key" {
-#   secret_id     = aws_secretsmanager_secret.warpstream_agent_key.id
-#   secret_string = var.warpstream_agent_key
-# }
-
 # Creating an EKS cluster for this example, you can bring your own cluster
 # if you already have one and don't need to use the one created here.
 module "eks" {
@@ -156,4 +146,13 @@ module "warpstream" {
 
   bucket_names           = aws_s3_directory_bucket.s3_express_buckets[*].bucket
   compaction_bucket_name = aws_s3_bucket.compaction_bucket.bucket
+
+  # You can lower latency even more by setting the WARPSTREAM_BATCH_TIMEOUT environment variable
+  # Ref: https://docs.warpstream.com/warpstream/byoc/advanced-agent-deployment-options/low-latency-clusters#batch-timeout
+  #   additional_helm_values = [<<EOT
+  # extraEnv:
+  #   - name: WARPSTREAM_BATCH_TIMEOUT
+  #     value: 50ms
+  # EOT
+  #   ]
 }
