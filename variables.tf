@@ -84,5 +84,5 @@ variable "additional_helm_values" {
 variable "helm_chart_version" {
   description = "The version of the helm chart to deply"
   type        = string
-  default     = ""
+  default     = null
 }
