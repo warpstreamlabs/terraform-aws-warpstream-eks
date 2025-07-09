@@ -11,66 +11,55 @@ resource "helm_release" "warpstream-agent" {
 
   namespace = var.kubernetes_namespace
 
-  dynamic "set" {
-    for_each = [local.bucket_url]
-    content {
-      name  = length(var.bucket_names) == 1 ? "config.bucketURL" : "config.ingestionBucketURL"
-      value = set.value
-    }
-  }
-
-  dynamic "set" {
-    for_each = length(var.bucket_names) > 1 ? ["s3://${var.compaction_bucket_name}?region=${data.aws_region.current.name}"] : []
-    content {
-      name  = "config.compactionBucketURL"
-      value = set.value
-    }
-  }
-
-  dynamic "set" {
-    for_each = var.additional_helm_sets
-    content {
-      name  = set.value.name
-      value = set.value.value
-      type  = set.value.type
-    }
-  }
-
-  set_sensitive {
+  set_sensitive = [{
     name  = "config.agentKey"
     value = var.warpstream_agent_key
-  }
+  }]
 
-  set {
-    name  = "config.region"
-    value = var.control_plane_region
-  }
-
-  set {
-    name  = "config.virtualClusterID"
-    value = var.warpstream_virtual_cluster_id
-  }
-
-  set {
-    name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = aws_iam_role.eks_service_account.arn
-  }
-
-  set {
-    name  = "autoscaling.enabled"
-    value = true
-    type  = "auto"
-  }
-
-  set {
-    name  = "autoscaling.minReplicas"
-    value = var.autoscaling_min_replicas
-  }
-
-  set {
-    name  = "autoscaling.maxReplicas"
-    value = var.autoscaling_max_replicas
-  }
+  set = concat(
+    length(var.bucket_names) > 1 ? [
+      {
+        name  = "config.compactionBucketURL"
+        value = "s3://${var.compaction_bucket_name}?region=${data.aws_region.current.name}"
+      }
+    ] : [],
+    [{
+      name  = length(var.bucket_names) == 1 ? "config.bucketURL" : "config.ingestionBucketURL"
+      value = local.bucket_url
+    }],
+    [
+      for k, v in var.additional_helm_sets : {
+        name  = k
+        value = v
+      }
+    ],
+    [
+      {
+        name  = "config.region"
+        value = var.control_plane_region
+      },
+      {
+        name  = "config.virtualClusterID"
+        value = var.warpstream_virtual_cluster_id
+      },
+      {
+        name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+        value = aws_iam_role.eks_service_account.arn
+      },
+      {
+        name  = "autoscaling.enabled"
+        value = true
+        type  = "auto"
+      },
+      {
+        name  = "autoscaling.minReplicas"
+        value = var.autoscaling_min_replicas
+      },
+      {
+        name  = "autoscaling.maxReplicas"
+        value = var.autoscaling_max_replicas
+      }
+  ])
 
   values = concat(
     [<<EOT
