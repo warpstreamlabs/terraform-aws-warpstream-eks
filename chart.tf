@@ -33,11 +33,18 @@ resource "helm_release" "warpstream-agent" {
         value = v
       }
     ],
-    [
+    var.control_plane_private_link_url == null ? [
       {
         name  = "config.region"
         value = var.control_plane_region
       },
+      ] : [
+      {
+        name  = "config.metadataURL"
+        value = var.control_plane_private_link_url
+      },
+    ],
+    [
       {
         name  = "config.virtualClusterID"
         value = var.warpstream_virtual_cluster_id
