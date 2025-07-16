@@ -6,6 +6,12 @@ variable "control_plane_region" {
   description = "The region of the warpstream control plane"
 }
 
+variable "control_plane_private_link_url" {
+  description = "The URL of the private link endpoint for the WarpStream Control Plane"
+  type        = string
+  default     = null
+}
+
 variable "kubernetes_namespace" {
   description = "The kubernetes namespace to deploy into"
 }
