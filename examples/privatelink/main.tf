@@ -39,7 +39,7 @@ provider "aws" {
 # if you already have one and don't need to use the one created here.
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "5.21.0"
+  version = "6.6.0"
 
   name = local.name
 
@@ -74,7 +74,7 @@ module "vpc" {
 # This is to prevent S3 network traffic from egressing over your NAT Gateway and increasing costs.
 module "endpoints" {
   source  = "terraform-aws-modules/vpc/aws//modules/vpc-endpoints"
-  version = "5.21.0"
+  version = "6.6.0"
 
   vpc_id = module.vpc.vpc_id
 
@@ -124,15 +124,15 @@ module "endpoints" {
 # if you already have one and don't need to use the one created here.
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "20.37.1"
+  version = "21.15.1"
 
-  cluster_name                   = local.name
-  cluster_version                = "1.31"
-  cluster_endpoint_public_access = true
+  name                   = local.name
+  kubernetes_version     = "1.35"
+  endpoint_public_access = true
 
   enable_cluster_creator_admin_permissions = true
 
-  cluster_compute_config = {
+  compute_config = {
     enabled    = true
     node_pools = ["general-purpose", "system"]
   }
